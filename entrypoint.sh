@@ -1,34 +1,49 @@
 #!/bin/bash
 set -e
 
-# Add common CUDA binary paths to the PATH
-export PATH=/usr/local/cuda/bin:/usr/local/cuda-12.1/bin:${PATH}
+echo "Entrypoint script started. Attempting to initialize CUDA MPS."
 
-echo "Current PATH: ${PATH}"
-echo "Searching for nvidia-cuda-mps-control..."
-if command -v nvidia-cuda-mps-control &> /dev/null; then
-    echo "Found nvidia-cuda-mps-control at: $(command -v nvidia-cuda-mps-control)"
-else
-    echo "nvidia-cuda-mps-control not found in PATH. Searching common locations..."
-    find /usr/local -name nvidia-cuda-mps-control -print -quit || echo "nvidia-cuda-mps-control still not found after search."
-fi
+# Common paths for nvidia-cuda-mps-control
+MPS_CONTROL_PATHS=(
+    "/usr/bin/nvidia-cuda-mps-control"
+    "/usr/local/cuda/bin/nvidia-cuda-mps-control"
+    "/usr/local/cuda-12.1/bin/nvidia-cuda-mps-control" # Specific to CUDA 12.1
+    "/opt/nvidia/cuda/bin/nvidia-cuda-mps-control"
+)
 
-# Start NVIDIA MPS control daemon in the background
-echo "Attempting to start NVIDIA CUDA MPS control daemon..."
-if nvidia-cuda-mps-control -d; then
-    echo "NVIDIA CUDA MPS control daemon command executed."
-    # Check if MPS daemon started successfully (optional, basic check)
-    if pgrep nvidia-cuda-mps-control > /dev/null; then
-        echo "NVIDIA CUDA MPS control daemon process found."
+MPS_CONTROL_EXECUTABLE=""
+
+for path_attempt in "${MPS_CONTROL_PATHS[@]}"; do
+    echo "Checking for MPS control at: ${path_attempt}"
+    if [ -x "${path_attempt}" ]; then
+        MPS_CONTROL_EXECUTABLE="${path_attempt}"
+        echo "Found MPS control executable at: ${MPS_CONTROL_EXECUTABLE}"
+        break
     else
-        echo "NVIDIA CUDA MPS control daemon process NOT found after attempting to start."
+        echo "MPS control not found or not executable at: ${path_attempt}"
     fi
+done
+
+if [ -z "${MPS_CONTROL_EXECUTABLE}" ]; then
+    echo "CRITICAL: nvidia-cuda-mps-control executable not found in any common paths. MPS cannot be started."
+    echo "Please verify CUDA toolkit installation in the base image."
+    # exit 1 # Optionally exit if MPS is absolutely critical
 else
-    echo "Executing 'nvidia-cuda-mps-control -d' FAILED."
-    # Depending on requirements, you might want to exit here if MPS is critical
-    # exit 1
+    echo "Attempting to start NVIDIA CUDA MPS control daemon using: ${MPS_CONTROL_EXECUTABLE}"
+    if ${MPS_CONTROL_EXECUTABLE} -d; then
+        echo "NVIDIA CUDA MPS control daemon command executed."
+        # Give it a moment to start
+        sleep 2
+        if pgrep nvidia-cuda-mps-control > /dev/null; then
+            echo "NVIDIA CUDA MPS control daemon process is running."
+        else
+            echo "WARNING: NVIDIA CUDA MPS control daemon process NOT found after attempting to start."
+        fi
+    else
+        echo "ERROR: Executing '${MPS_CONTROL_EXECUTABLE} -d' FAILED."
+        # exit 1 # Optionally exit
+    fi
 fi
 
-# Execute the CMD passed to the entrypoint (your Gunicorn command)
-echo "Executing command: $@"
+echo "Proceeding to execute CMD: $@"
 exec "$@"
