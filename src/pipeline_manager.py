@@ -101,9 +101,8 @@ class TTSPipelineManager:
             return None
 
     def _add_pipeline_to_pool(self) -> bool:
-        """Adds a single new pipeline to the pool if not exceeding max size. Called internally."""
-        # This method assumes pool_lock is already held or not strictly needed if only current_pool_size is modified atomically.
-        # However, for consistency with current_pool_size updates, it's better if called from a locked section.
+        """Adds a new pipeline to the pool. Must be called with pool_lock held."""
+        # Assumes pool_lock is held. Manages current_pool_size.
         if self.current_pool_size < MAX_PIPELINE_POOL_SIZE:
             pipeline = self._create_pipeline()
             if pipeline:

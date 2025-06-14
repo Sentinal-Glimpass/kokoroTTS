@@ -3,6 +3,7 @@ import logging
 import io
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -121,7 +122,7 @@ async def synthesize_speech_endpoint(request: TTSRequest):
     # Speed is validated by Pydantic (ge, le)
     logger.info(f"Received synthesis request: Lang='{requested_api_lang_code}', Voice='{request.voice}', Speed='{request.speed}', Text='{request.text[:50]}...'")
     
-    audio_data, sample_rate = tts_service.synthesize_speech(text=request.text, voice=request.voice, speed=request.speed)
+    audio_data, sample_rate = await run_in_threadpool(tts_service.synthesize_speech, text=request.text, voice=request.voice, speed=request.speed)
 
     if audio_data is None or sample_rate is None:
         logger.error(f"Synthesis failed for text: '{request.text[:50]}...'")
