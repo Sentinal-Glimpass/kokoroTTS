@@ -28,6 +28,9 @@ from .config import (
 from .pipeline_manager import TTSPipelineManager
 from .tts_service import TTSService, SAMPLE_RATE
 
+# --- Configuration ---
+SERVER_API_KEY = "f65a86f5ad86f5d86f4ad86f4a8f58asf58as56fa8" # TODO: IMPORTANT! Change this key and load from env var/secrets manager for production!
+
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,7 @@ class TTSRequest(BaseModel):
     voice: str = Field(..., description="Voice model name (e.g., 'hf_beta', 'af_heart'). Must be valid for the specified lang_code.")
     speed: float = Field(DEFAULT_SPEED, ge=MIN_SPEED, le=MAX_SPEED,
                          description=f"Speech speed. Min: {MIN_SPEED}, Max: {MAX_SPEED}, Default: {DEFAULT_SPEED}")
+    api_key: str = Field(..., description="API key for accessing the service.")
 
 
 @app.post("/synthesize", 
@@ -87,6 +91,7 @@ class TTSRequest(BaseModel):
                     "description": "Successful synthesis, returns WAV audio data."
                 },
                 400: {"description": "Bad Request (e.g., empty text)"},
+                401: {"description": "Unauthorized (e.g., invalid API key)"},
                 500: {"description": "Internal Server Error (e.g., synthesis failed)"},
                 503: {"description": "Service Unavailable (e.g., TTS components not initialized)"}
             },
@@ -94,7 +99,13 @@ class TTSRequest(BaseModel):
             description="Takes text and an optional voice, returns synthesized speech as a WAV audio file."
 )
 async def synthesize_speech_endpoint(request: TTSRequest):
-    global tts_service
+    global tts_service, tts_pipeline_manager # Added tts_pipeline_manager to global for consistency
+
+    # --- API Key Check ---
+    if request.api_key != SERVER_API_KEY:
+        logger.warning(f"Invalid API key attempt. Provided key prefix: {request.api_key[:4]}...") # Log prefix for security
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    # --- End API Key Check ---
     if not tts_service or not tts_pipeline_manager:
         logger.error("TTS service or manager not available. Check startup logs.")
         raise HTTPException(status_code=503, detail="TTS service is not available. Please check server logs.")
@@ -144,7 +155,7 @@ async def synthesize_speech_endpoint(request: TTSRequest):
          summary="Health Check",
          description="Returns the health status of the TTS service, including pipeline manager status.")
 async def health_check():
-    global tts_pipeline_manager
+    global tts_pipeline_manager, tts_service # Added tts_service for consistency
     if tts_pipeline_manager and tts_service:
         manager_status = tts_pipeline_manager.get_status()
         return {
