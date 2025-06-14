@@ -1,11 +1,9 @@
 # Dockerfile for kokoroTTS service
 
 # 1. Base Image
-# Using a Python 3.10 slim image as a base. 
-# For GPU support with PyTorch, a specific CUDA-enabled base image might be needed
-# (e.g., nvidia/cuda:X.Y-cudnnA-runtime-ubuntuZ.W or a PyTorch official image).
-# However, kokoro might rely on torch to handle this. Start with a general image.
-FROM python:3.10-slim
+# Using NVIDIA CUDA base image for T4 GPU compatibility on Google Cloud Run.
+# This image includes CUDA 12.1.1 and cuDNN 8, suitable for recent PyTorch versions.
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 # 2. Environment Variables
 ENV PYTHONUNBUFFERED=1
@@ -14,14 +12,26 @@ ENV PORT=8000
 ENV DEFAULT_LANG_CODE=h 
 
 # 3. System Dependencies
-# Install espeak-ng and other common utilities
+# Install Python 3.10, pip, venv, and other necessary tools.
+# Also install espeak-ng and libsndfile1.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    # Add deadsnakes PPA for newer Python versions if needed, though Ubuntu 22.04 might have 3.10
+    # Forcing Python 3.10 installation
+    python3.10 \
+    python3.10-venv \
+    python3-pip \
+    git \
+    # System dependencies for the application
     espeak-ng \
-    # Add any other system dependencies here, e.g., build-essential for some packages
-    # libsndfile1 for soundfile, though often handled by wheels
     libsndfile1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Update alternatives to make python3.10 the default python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# Ensure pip is for python3.10
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # 4. Set Working Directory
 WORKDIR ${APP_HOME}
@@ -29,8 +39,10 @@ WORKDIR ${APP_HOME}
 # 5. Install Python Dependencies
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+# It's generally recommended to install torch separately with a specific CUDA version if issues arise,
+# but pip should pick up the CUDA version from the environment.
+# Example for specific torch version: RUN python3 -m pip install torch==2.1.0+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
 # 6. Copy Application Code
 COPY ./src ./src
@@ -47,4 +59,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 # 9. Command to Run Application
 # Use uvicorn to run the FastAPI application.
 # The host 0.0.0.0 makes it accessible from outside the container.
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
