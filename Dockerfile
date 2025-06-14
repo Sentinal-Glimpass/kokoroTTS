@@ -9,7 +9,7 @@ FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 ENV PYTHONUNBUFFERED=1
 ENV APP_HOME=/app
 ENV PORT=8000
-ENV DEFAULT_LANG_CODE=h # Note: If 'hi' for Hindi was intended, this might need correction.
+ENV DEFAULT_LANG_CODE=h
 
 # Recommended NVIDIA environment variables for containers
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
