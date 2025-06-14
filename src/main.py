@@ -4,8 +4,17 @@ import io
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
 import soundfile as sf
+
+from .valid_options import (
+    VALID_LANG_VOICES,
+    MIN_SPEED,
+    MAX_SPEED,
+    DEFAULT_SPEED,
+    SUPPORTED_API_LANG_CODES
+)
 import uvicorn
 
 from .config import (
@@ -63,7 +72,12 @@ async def shutdown_event():
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = DEFAULT_VOICE
+    lang_code: Optional[str] = Field(DEFAULT_LANG_CODE,
+                                     description=f"Short language code for the voice. Supported: {', '.join(SUPPORTED_API_LANG_CODES)}. Defaults to configured service language.")
+    voice: str = Field(..., description="Voice model name (e.g., 'hf_beta', 'af_heart'). Must be valid for the specified lang_code.")
+    speed: float = Field(DEFAULT_SPEED, ge=MIN_SPEED, le=MAX_SPEED,
+                         description=f"Speech speed. Min: {MIN_SPEED}, Max: {MAX_SPEED}, Default: {DEFAULT_SPEED}")
+
 
 @app.post("/synthesize", 
             responses={
@@ -88,9 +102,26 @@ async def synthesize_speech_endpoint(request: TTSRequest):
         logger.warning("Received empty text for synthesis.")
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
 
-    logger.info(f"Received synthesis request: Text='{request.text[:50]}...', Voice='{request.voice}'")
+    # Validate lang_code
+    requested_api_lang_code = request.lang_code if request.lang_code else DEFAULT_LANG_CODE
+    if requested_api_lang_code not in VALID_LANG_VOICES:
+        raise HTTPException(status_code=400, detail=f"Unsupported lang_code: '{requested_api_lang_code}'. Supported codes: {', '.join(SUPPORTED_API_LANG_CODES)}")
+
+    # Check compatibility with the initialized pipeline manager's language
+    # This is a limitation of the current single-language pool manager.
+    if tts_pipeline_manager.lang_code != requested_api_lang_code:
+        logger.error(f"Requested lang_code '{requested_api_lang_code}' is not compatible with service's initialized KPipeline lang '{tts_pipeline_manager.lang_code}'.")
+        raise HTTPException(status_code=400, 
+                            detail=f"Language '{requested_api_lang_code}' is not supported by this service instance which is configured for language '{tts_pipeline_manager.lang_code}'.")
+
+    # Voice validation against a predefined list for the lang_code is now removed.
+    # The provided 'voice' string will be passed directly to the KPipeline.
+    # It's assumed KPipeline will handle invalid voice strings for its configured language.
+
+    # Speed is validated by Pydantic (ge, le)
+    logger.info(f"Received synthesis request: Lang='{requested_api_lang_code}', Voice='{request.voice}', Speed='{request.speed}', Text='{request.text[:50]}...'")
     
-    audio_data, sample_rate = tts_service.synthesize_speech(text=request.text, voice=request.voice)
+    audio_data, sample_rate = tts_service.synthesize_speech(text=request.text, voice=request.voice, speed=request.speed)
 
     if audio_data is None or sample_rate is None:
         logger.error(f"Synthesis failed for text: '{request.text[:50]}...'")

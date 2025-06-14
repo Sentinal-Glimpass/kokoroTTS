@@ -11,7 +11,7 @@ FROM python:3.10-slim
 ENV PYTHONUNBUFFERED=1
 ENV APP_HOME=/app
 ENV PORT=8000
-ENV DEFAULT_LANG_CODE=hi # Can be overridden at runtime
+ENV DEFAULT_LANG_CODE=h 
 
 # 3. System Dependencies
 # Install espeak-ng and other common utilities

@@ -18,13 +18,14 @@ class TTSService:
             logger.error("TTSPipelineManager instance is required.")
             raise ValueError("TTSPipelineManager instance cannot be None.")
 
-    def synthesize_speech(self, text: str, voice: str = DEFAULT_VOICE) -> tuple[np.ndarray | None, int | None]:
+    def synthesize_speech(self, text: str, voice: str = DEFAULT_VOICE, speed: float = 1.0) -> tuple[np.ndarray | None, int | None]:
         """
         Synthesizes speech from text using a managed KPipeline.
 
         Args:
             text (str): The text to synthesize.
-            voice (str): The voice to use for synthesis. Defaults to DEFAULT_VOICE.
+            voice (str): The voice to use for synthesis.
+            speed (float): The speed of speech generation.
 
         Returns:
             tuple[np.ndarray | None, int | None]: A tuple containing the audio data as a NumPy array
@@ -43,11 +44,11 @@ class TTSService:
                 logger.error("Failed to acquire a TTS pipeline from the manager.")
                 return None, None
 
-            logger.info(f"Pipeline acquired. Synthesizing text: '{text[:50]}...' using voice '{voice}'")
+            logger.info(f"Pipeline acquired. Synthesizing text: '{text[:50]}...' using voice '{voice}' at speed {speed}")
             synthesis_start_time = time.time()
 
             # The KPipeline call returns a generator
-            generator = pipeline(text, voice=voice)
+            generator = pipeline(text, voice=voice, speed=speed)
 
             audio_chunks = []
             first_chunk_time = None
@@ -90,9 +91,13 @@ if __name__ == "__main__":
         service = TTSService(pipeline_manager=manager)
 
         test_text = "नमस्ते दुनिया, यह एक परीक्षण है।"
-        print(f"\nTesting synthesis with text: '{test_text}'")
+        test_voice = "hf_beta" # Example voice
+        test_speed = 1.2
+        print(f"\nTesting synthesis with text: '{test_text}', voice: '{test_voice}', speed: {test_speed}")
         
-        audio_data, sample_rate = service.synthesize_speech(test_text)
+        # Note: For this test to work, the TTSPipelineManager must be initialized with a lang_code
+        # that is compatible with the 'hf_beta' voice (e.g., 'h' which maps to 'hi').
+        audio_data, sample_rate = service.synthesize_speech(text=test_text, voice=test_voice, speed=test_speed)
 
         if audio_data is not None and sample_rate is not None:
             print(f"Synthesis successful. Sample rate: {sample_rate}, Audio data shape: {audio_data.shape}, dtype: {audio_data.dtype}")

@@ -84,9 +84,12 @@ The `--reload` flag is for development and automatically reloads the server on c
     ```json
     {
         "text": "Your text to synthesize.",
-        "voice": "hf_beta" // Optional, defaults to a pre-configured voice
+        "lang_code": "h", // Optional: Short language code (e.g., 'h' for Hindi, 'a' for American English). Defaults to service's configured language.
+        "voice": "hf_beta",   // Required: Voice model name (e.g., 'hf_beta', 'af_heart'). Must be valid for the lang_code.
+        "speed": 1.0        // Optional: Speech speed (e.g., 0.5 to 2.0). Defaults to 1.0.
     }
     ```
+    For a list of supported `lang_code` and `voice` options, refer to the `VOICES.md` file from the Kokoro model or the service's `/docs` endpoint for Pydantic model details.
 -   **Success Response** (`200 OK`):
     -   **Content-Type**: `audio/wav`
     -   The response body will be the raw WAV audio data.
