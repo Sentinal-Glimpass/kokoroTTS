@@ -66,4 +66,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 # The entrypoint script starts MPS and then executes the CMD.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # Gunicorn command is now the CMD, passed to the entrypoint.
-CMD ["gunicorn", "src.main:app", "--workers", "20", "--worker-class", "uvicorn.workers.UvicornWorker", "--worker-connections", "1", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-"]
+#CMD ["gunicorn", "src.main:app", "--workers", "20", "--worker-class", "uvicorn.workers.UvicornWorker", "--worker-connections", "1", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
