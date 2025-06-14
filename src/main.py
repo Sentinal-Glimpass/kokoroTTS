@@ -2,12 +2,13 @@
 import logging
 import io
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import Optional
 import soundfile as sf
+import numpy as np
 
 from .valid_options import (
     VALID_LANG_VOICES,
@@ -139,17 +140,35 @@ async def synthesize_speech_endpoint(request: TTSRequest):
         logger.error(f"Synthesis failed for text: '{request.text[:50]}...'")
         raise HTTPException(status_code=500, detail="Speech synthesis failed.")
 
-    # Convert numpy array to WAV bytes
-    wav_io = io.BytesIO()
+    # Ensure audio_data is 16-bit PCM
+    # If kokoro outputs float, it needs conversion. Assuming it's already int16 based on previous WAV write.
+    # If not, an explicit conversion like: audio_data = (audio_data * 32767).astype(np.int16) would be needed if it was float in [-1, 1]
     try:
-        sf.write(wav_io, audio_data, sample_rate, format='WAV', subtype='PCM_16')
-        wav_io.seek(0)
-        logger.info(f"Successfully converted audio to WAV format. Size: {wav_io.getbuffer().nbytes} bytes.")
-    except Exception as e:
-        logger.error(f"Failed to write WAV audio to BytesIO: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to process audio data.")
+        # Convert NumPy array directly to bytes
+        # This assumes audio_data is a 1D NumPy array of dtype int16 (PCM16)
+        # If kokoro's KPipeline or TTSService changes output format, this needs adjustment.
+        if audio_data.dtype != np.int16:
+            logger.warning(f"Audio data is not int16, it is {audio_data.dtype}. Attempting conversion.")
+            # Example: if float32, scale and convert
+            if np.issubdtype(audio_data.dtype, np.floating):
+                audio_data = np.clip(audio_data, -1.0, 1.0) # Ensure data is in [-1, 1] range for floats
+                audio_data = (audio_data * 32767).astype(np.int16)
+            else:
+                # For other integer types, just ensure it's int16
+                audio_data = audio_data.astype(np.int16)
+        
+        pcm_data = audio_data.tobytes()
+        logger.info(f"Successfully converted audio to raw PCM bytes. Size: {len(pcm_data)} bytes. Sample rate: {sample_rate} Hz.")
+        # Assuming mono channel audio, which is typical for TTS.
+        # The media type 'audio/L16' implies 16-bit linear PCM.
+        # 'rate' specifies the sample rate.
+        # 'channels' specifies the number of audio channels.
+        media_type = f"audio/L16;rate={sample_rate};channels=1"
+        return Response(content=pcm_data, media_type=media_type)
 
-    return StreamingResponse(wav_io, media_type="audio/wav")
+    except Exception as e:
+        logger.error(f"Failed to convert audio to PCM bytes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to process audio data into PCM.")
 
 @app.get("/health", 
          summary="Health Check",

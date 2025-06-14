@@ -4,6 +4,9 @@ import aiohttp
 import json
 import tempfile
 import os
+import soundfile as sf
+import numpy as np
+
 try:
     from playsound import playsound
 except ImportError:
@@ -52,7 +55,7 @@ hindi_texts = [
     "हम कल मिलेंगे।",
     "यह सचमुच अद्भुत है!",
     "सावधान रहें।"
-][3:4]
+][3:8]
 
 async def fetch_tts(session, text, call_num):
     payload = {
@@ -74,7 +77,7 @@ async def fetch_tts(session, text, call_num):
             end_time = time.time()
             latency = end_time - start_time
             
-            if response_status == 200 and 'audio/wav' in response_content_type.lower():
+            if response_status == 200 and 'audio/l16' in response_content_type.lower(): # Expecting raw PCM L16
                 print(f"Call {call_num} successful. Text: '{text}'. Latency: {latency:.4f} seconds.")
                 return latency, text, None, audio_data
             else:
@@ -125,13 +128,21 @@ async def main():
                     max_latency = latency
                 if audio_content and playsound: # Check if audio_content exists and playsound is available
                     try:
-                        # Create a temporary file to store the WAV data
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
-                            tmp_wav.write(audio_content)
-                            tmp_wav_path = tmp_wav.name
+                        # audio_content is raw PCM bytes. Convert to numpy array then write as WAV for playsound.
+                        # Assuming 16-bit mono PCM, which is what main.py is configured to send.
+                        # Sample rate is 24000 Hz as defined in tts_service.py and used in main.py's media type.
+                        sample_rate = 24000 # Should match server output
+                        channels = 1      # Assuming mono
                         
-                        print(f"\nPlaying audio for call {i+1} (Text: '{text}') from: {tmp_wav_path}")
-                        playsound(tmp_wav_path) 
+                        # Convert bytes to int16 NumPy array
+                        pcm_data_np = np.frombuffer(audio_content, dtype=np.int16)
+
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav_file:
+                            sf.write(tmp_wav_file.name, pcm_data_np, samplerate=sample_rate, channels=channels, subtype='PCM_16')
+                            tmp_wav_path = tmp_wav_file.name
+                        
+                        print(f"\nPlaying audio for call {i+1} (Text: '{text}') from temporary WAV: {tmp_wav_path}")
+                        playsound(tmp_wav_path)
                         print(f"Finished playing audio for call {i+1}.")
                         os.remove(tmp_wav_path) # Clean up the temporary file
                     except Exception as e:
