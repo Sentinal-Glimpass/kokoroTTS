@@ -59,4 +59,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 # 9. Command to Run Application
 # Use uvicorn to run the FastAPI application.
 # The host 0.0.0.0 makes it accessible from outside the container.
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["gunicorn", "src.main:app", "--workers", "20", "--worker-class", "uvicorn.workers.UvicornWorker", "--worker-connections", "1", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-"]

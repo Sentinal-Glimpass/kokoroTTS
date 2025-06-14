@@ -5,9 +5,9 @@ DEFAULT_LANG_CODE = "h"  # Default language code for KPipeline, e.g., 'en', 'hi'
 DEFAULT_VOICE = "hf_beta" # Default voice for synthesis
 
 # Pipeline Pool Management
-INITIAL_PIPELINE_POOL_SIZE = 20
-MIN_SPARE_PIPELINES = 2
-MAX_PIPELINE_POOL_SIZE = 40 # A sensible upper limit to prevent runaway scaling
+INITIAL_PIPELINE_POOL_SIZE = 1
+MIN_SPARE_PIPELINES = 0
+MAX_PIPELINE_POOL_SIZE = 1 # A sensible upper limit to prevent runaway scaling
 
 # API Configuration
 API_HOST = "0.0.0.0"
