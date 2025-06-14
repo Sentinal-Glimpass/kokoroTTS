@@ -83,10 +83,10 @@ class TTSPipelineManager:
             idle_pipelines = self.current_pool_size - self.active_pipelines
             if idle_pipelines < MIN_SPARE_PIPELINES and self.current_pool_size < MAX_PIPELINE_POOL_SIZE:
                 logger.info(f"Scaling condition met: Idle pipelines ({idle_pipelines}) < MIN_SPARE_PIPELINES ({MIN_SPARE_PIPELINES}). Attempting to add a new pipeline.")
-                if self._add_pipeline_to_pool():
-                    logger.info("Successfully added a new pipeline during scaling.")
-                else:
-                    logger.warning("Failed to add a new pipeline during scaling.")
+                # if self._add_pipeline_to_pool():
+                #     logger.info("Successfully added a new pipeline during scaling.")
+                # else:
+                #     logger.warning("Failed to add a new pipeline during scaling.")
         try:
             # Try to get a pipeline without blocking indefinitely
             pipeline = self.pipeline_pool.get(timeout=10) # Wait up to 10s for a pipeline

@@ -2,6 +2,13 @@ import asyncio
 import time
 import aiohttp
 import json
+import tempfile
+import os
+try:
+    from playsound import playsound
+except ImportError:
+    playsound = None
+    print("Warning: 'playsound' library not found. Audio playback will be skipped. Install it with 'pip install playsound'")
 
 # Your deployed service URL
 url = "https://kokoro-tts-136433412517.us-central1.run.app/synthesize"
@@ -45,7 +52,7 @@ hindi_texts = [
     "हम कल मिलेंगे।",
     "यह सचमुच अद्भुत है!",
     "सावधान रहें।"
-][:2]
+][3:4]
 
 async def fetch_tts(session, text, call_num):
     payload = {
@@ -58,35 +65,35 @@ async def fetch_tts(session, text, call_num):
     
     start_time = time.time()
     print(f"Starting call {call_num} with text: '{text}'")
+    audio_data = None 
     try:
         async with session.post(url, headers=headers, json=payload) as response:
             response_status = response.status
             response_content_type = response.headers.get('Content-Type', '')
-            # Ensure the response body is read to properly calculate timing
-            await response.read()
+            audio_data = await response.read() # Capture audio data
             end_time = time.time()
             latency = end_time - start_time
             
             if response_status == 200 and 'audio/wav' in response_content_type.lower():
                 print(f"Call {call_num} successful. Text: '{text}'. Latency: {latency:.4f} seconds.")
-                return latency, text, None
+                return latency, text, None, audio_data
             else:
                 error_message = f"Call {call_num} failed. Text: '{text}'. Status: {response_status}, Content-Type: {response_content_type}. Latency: {latency:.4f} seconds."
                 print(error_message)
-                return latency, text, error_message
+                return latency, text, error_message, None
                 
     except aiohttp.ClientError as e:
-        end_time = time.time()
-        latency = end_time - start_time
-        error_message = f"Call {call_num} request exception for text '{text}': {e}. Latency: {latency:.4f} seconds."
+        current_time = time.time()
+        latency_val = current_time - start_time
+        error_message = f"Call {call_num} request exception for text '{text}': {e}. Latency: {latency_val:.4f} seconds."
         print(error_message)
-        return latency, text, error_message
+        return latency_val, text, error_message, None
     except Exception as e:
-        end_time = time.time()
-        latency = end_time - start_time
-        error_message = f"Call {call_num} an unexpected error occurred for text '{text}': {e}. Latency: {latency:.4f} seconds."
+        current_time = time.time()
+        latency_val = current_time - start_time
+        error_message = f"Call {call_num} an unexpected error occurred for text '{text}': {e}. Latency: {latency_val:.4f} seconds."
         print(error_message)
-        return latency, text, error_message
+        return latency_val, text, error_message, None
 
 async def main():
     async with aiohttp.ClientSession() as session:
@@ -96,26 +103,48 @@ async def main():
         
         results = await asyncio.gather(*tasks)
         
-        print("\n--- Latency Test Report ---")
+        print("\n--- Latency and Audio Quality Test Report ---")
         successful_calls = 0
         total_latency = 0
         min_latency = float('inf')
         max_latency = 0
+        latencies = []
+        failed_requests_details = []
         
-        for latency, text, error in results:
-            if error is None:
+        for i, result in enumerate(results):
+            latency, text, error, audio_content = result # Unpack audio_content
+            total_latency += latency
+            latencies.append(latency)
+            if error:
+                failed_requests_details.append({"text": text, "error": error, "latency": latency})
+            else:
                 successful_calls += 1
-                total_latency += latency
                 if latency < min_latency:
                     min_latency = latency
                 if latency > max_latency:
                     max_latency = latency
-            else:
-                print(f"  Error for text '{text}': {error}")
+                if audio_content and playsound: # Check if audio_content exists and playsound is available
+                    try:
+                        # Create a temporary file to store the WAV data
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+                            tmp_wav.write(audio_content)
+                            tmp_wav_path = tmp_wav.name
+                        
+                        print(f"\nPlaying audio for call {i+1} (Text: '{text}') from: {tmp_wav_path}")
+                        playsound(tmp_wav_path) 
+                        print(f"Finished playing audio for call {i+1}.")
+                        os.remove(tmp_wav_path) # Clean up the temporary file
+                    except Exception as e:
+                        print(f"Error playing audio for text '{text}': {e}")
+                elif not audio_content and not error:
+                     print(f"No audio content received for successful call {i+1} (Text: '{text}'), skipping playback.")
+                elif not playsound:
+                    print(f"Skipping audio playback for text '{text}' (playsound library not available or failed to import).")
 
         print(f"\nTotal calls made: {len(hindi_texts)}")
         print(f"Successful calls: {successful_calls}")
-        print(f"Failed calls: {len(hindi_texts) - successful_calls}")
+        failed_calls = len(hindi_texts) - successful_calls
+        print(f"Failed calls: {failed_calls}")
         
         if successful_calls > 0:
             average_latency = total_latency / successful_calls
