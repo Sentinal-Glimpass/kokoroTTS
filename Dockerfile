@@ -1,4 +1,4 @@
-# Dockerfile for kokoroTTS service
+# Dockerfile for kokoroTTS service with GPU support via CUDA MPS
 
 # 1. Base Image
 # Using NVIDIA CUDA base image for T4 GPU compatibility on Google Cloud Run.
@@ -9,19 +9,22 @@ FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 ENV PYTHONUNBUFFERED=1
 ENV APP_HOME=/app
 ENV PORT=8000
-ENV DEFAULT_LANG_CODE=h 
+ENV DEFAULT_LANG_CODE=h # Note: If 'hi' for Hindi was intended, this might need correction.
+
+# Recommended NVIDIA environment variables for containers
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
+ENV NVIDIA_VISIBLE_DEVICES all
 
 # 3. System Dependencies
-# Install Python 3.10, pip, venv, and other necessary tools.
+# Install Python 3.10, pip, venv, curl, and other necessary tools.
 # Also install espeak-ng and libsndfile1.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
-    # Add deadsnakes PPA for newer Python versions if needed, though Ubuntu 22.04 might have 3.10
-    # Forcing Python 3.10 installation
     python3.10 \
     python3.10-venv \
     python3-pip \
     git \
+    curl \
     # System dependencies for the application
     espeak-ng \
     libsndfile1 \
@@ -47,16 +50,20 @@ RUN python3 -m pip install --no-cache-dir -r requirements.txt
 # 6. Copy Application Code
 COPY ./src ./src
 
-# 7. Expose Port
+# 7. Copy Entrypoint Script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# 8. Expose Port
 EXPOSE ${PORT}
 
-# 8. Healthcheck (Optional but good practice for GKE/Kubernetes)
-# This checks if the /health endpoint is responsive.
-# Adjust interval, timeout, retries as needed.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+# 9. Healthcheck
+# Increased start-period to allow MPS daemon and Gunicorn to initialize.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# 9. Command to Run Application
-# Use uvicorn to run the FastAPI application.
-# The host 0.0.0.0 makes it accessible from outside the container.
+# 10. Entrypoint and Command to Run Application
+# The entrypoint script starts MPS and then executes the CMD.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# Gunicorn command is now the CMD, passed to the entrypoint.
 CMD ["gunicorn", "src.main:app", "--workers", "20", "--worker-class", "uvicorn.workers.UvicornWorker", "--worker-connections", "1", "--bind", "0.0.0.0:8000", "--log-level", "info", "--access-logfile", "-", "--error-logfile", "-"]
